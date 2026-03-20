@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRKING · Madrid</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg: #FFFFFF;
+    --surface: #FFFFFF;
+    --surface2: #F8F9FB;
+    --border: #E5E8EF;
+    --accent: #FF4500;
+    --green: #16A34A;
+    --red: #DC2626;
+    --yellow: #B45309;
+    --blue: #1D4ED8;
+    --text: #1A1D23;
+    --muted: #8A92A3;
+    --shadow-sm: 0 1px 4px rgba(0,0,0,0.06), 0 2px 10px rgba(0,0,0,0.04);
+    --shadow-md: 0 2px 8px rgba(0,0,0,0.06), 0 6px 24px rgba(0,0,0,0.07);
+    --shadow-lg: 0 4px 16px rgba(0,0,0,0.07), 0 12px 40px rgba(0,0,0,0.09);
+    --radius: 14px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; height: 100vh; overflow: hidden; }
+
+  /* SPLASH */
+  #splash {
+    position: fixed; inset: 0; background: #fff; z-index: 9999;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    transition: opacity 0.5s ease;
+  }
+  #splash h1 { font-family: 'Bebas Neue'; font-size: 80px; letter-spacing: 10px; color: var(--accent); line-height: 1; }
+  #splash p { font-family: 'JetBrains Mono'; font-size: 11px; color: var(--muted); letter-spacing: 5px; text-transform: uppercase; }
+  .splash-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: pulse 0.9s ease infinite alternate; margin-top: 20px; }
+  @keyframes pulse { from { opacity: 0.2; transform: scale(0.8); } to { opacity: 1; transform: scale(1.3); } }
+
+  /* LAYOUT */
+  #map { position: absolute; inset: 0; z-index: 1; }
+
+  /* TOP BAR */
+  #topbar {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px;
+    background: linear-gradient(to bottom, rgba(255,255,255,1) 55%, rgba(255,255,255,0) 100%);
+  }
+  .logo {
+    font-family: 'Bebas Neue'; font-size: 26px; letter-spacing: 4px;
+    color: var(--accent); flex-shrink: 0;
+  }
+  .logo span { color: #C0C6D4; }
+  #search-box {
+    flex: 1; display: flex; align-items: center; gap: 8px;
+    background: #fff; border: 1.5px solid var(--border);
+    border-radius: 50px; padding: 9px 16px;
+    box-shadow: var(--shadow-sm);
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  #search-box:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(255,69,0,0.08), var(--shadow-sm);
+  }
+  #search-box input {
+    flex: 1; background: none; border: none; outline: none;
+    color: var(--text); font-family: 'DM Sans'; font-size: 14px;
+  }
+  #search-box input::placeholder { color: var(--muted); }
+  .search-icon { color: var(--muted); font-size: 15px; }
+
+  /* FILTER CHIPS */
+  #filters {
+    position: absolute; top: 66px; left: 16px; z-index: 100;
+    display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .chip {
+    padding: 5px 13px; border-radius: 50px; font-size: 12px; font-weight: 500;
+    border: 1.5px solid var(--border); background: #fff;
+    cursor: pointer; transition: all 0.18s; box-shadow: var(--shadow-sm);
+    display: flex; align-items: center; gap: 6px; white-space: nowrap;
+    color: #4B5563;
+  }
+  .chip:hover { border-color: #CBD2DF; box-shadow: var(--shadow-md); }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 2px 12px rgba(255,69,0,0.25); }
+  .chip-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+  /* STATS BAR */
+  #statsbar {
+    position: absolute; top: 66px; right: 16px; z-index: 100;
+    display: flex; flex-direction: column; gap: 7px;
+  }
+  .stat-card {
+    background: #fff; border: 1.5px solid var(--border);
+    border-radius: var(--radius); padding: 9px 14px;
+    box-shadow: var(--shadow-sm); min-width: 105px;
+  }
+  .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 500; }
+  .stat-value { font-family: 'Bebas Neue'; font-size: 28px; line-height: 1.15; }
+  .stat-value.green { color: var(--green); }
+  .stat-value.orange { color: var(--accent); }
+
+  /* VEHICLE PANEL */
+  #vehicle-panel {
+    position: absolute; left: 16px; bottom: 20px; z-index: 200;
+    background: #fff; border: 1.5px solid var(--border);
+    border-radius: var(--radius); padding: 16px 18px; width: 260px;
+    box-shadow: var(--shadow-lg);
+  }
+  .panel-title {
+    font-family: 'Bebas Neue'; font-size: 15px; letter-spacing: 3px;
+    color: var(--muted); margin-bottom: 12px;
+  }
+  .plate-input-wrap { display: flex; gap: 8px; align-items: center; }
+  .plate-input {
+    flex: 1; background: var(--surface2); border: 1.5px solid var(--border);
+    border-radius: 10px; padding: 9px 12px;
+    color: var(--text); font-family: 'JetBrains Mono'; font-size: 15px; font-weight: 600;
+    outline: none; text-transform: uppercase; letter-spacing: 3px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .plate-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255,69,0,0.08); }
+  .btn-lookup {
+    background: var(--accent); border: none; border-radius: 10px;
+    padding: 9px 14px; color: white; font-weight: 700; cursor: pointer;
+    font-size: 13px; transition: transform 0.15s, opacity 0.15s;
+  }
+  .btn-lookup:hover { opacity: 0.88; transform: scale(1.04); }
+  #car-info {
+    margin-top: 11px; padding: 11px; background: var(--surface2);
+    border-radius: 10px; display: none; border: 1px solid var(--border);
+  }
+  .car-info-row { display: flex; justify-content: space-between; margin-bottom: 5px; align-items: center; }
+  .car-info-row:last-child { margin-bottom: 0; }
+  .car-info-key { color: var(--muted); font-size: 12px; }
+  .car-info-val { font-size: 12px; font-weight: 600; color: var(--text); }
+  .emission-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 6px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.8px;
+  }
+  .eco-zero { background: #DCFCE7; color: #166534; border: 1px solid #BBF7D0; }
+  .eco-b    { background: #DBEAFE; color: #1E3A8A; border: 1px solid #BFDBFE; }
+  .eco-c    { background: #FEF9C3; color: #713F12; border: 1px solid #FEF08A; }
+  .eco-none { background: #FEE2E2; color: #7F1D1D; border: 1px solid #FECACA; }
+
+  /* SPOT DETAIL PANEL */
+  #spot-panel {
+    position: absolute; bottom: 20px; right: 16px; z-index: 200;
+    background: #fff; border: 1.5px solid var(--border);
+    border-radius: 20px; width: 300px; overflow: hidden;
+    box-shadow: var(--shadow-lg);
+    transform: translateY(115%); opacity: 0;
+    transition: transform 0.32s cubic-bezier(0.34,1.5,0.64,1), opacity 0.22s ease;
+  }
+  #spot-panel.open { transform: translateY(0); opacity: 1; }
+  .spot-header {
+    padding: 16px 18px 13px;
+    border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: flex-start;
+  }
+  .spot-id { font-family: 'Bebas Neue'; font-size: 22px; letter-spacing: 2px; color: var(--text); }
+  .spot-zone { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .spot-status-badge {
+    padding: 4px 11px; border-radius: 50px; font-size: 10px; font-weight: 700;
+    letter-spacing: 0.6px;
+  }
+  .status-free     { background: #DCFCE7; color: #166534; border: 1px solid #BBF7D0; }
+  .status-taken    { background: #FEE2E2; color: #7F1D1D; border: 1px solid #FECACA; }
+  .status-reserved { background: #FEF9C3; color: #713F12; border: 1px solid #FEF08A; }
+  .spot-body { padding: 14px 18px; }
+  .spot-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 13px; }
+  .meta-item {
+    background: var(--surface2); border-radius: 10px; padding: 10px 11px;
+    border: 1px solid var(--border);
+  }
+  .meta-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 500; }
+  .meta-val { font-family: 'Bebas Neue'; font-size: 20px; margin-top: 1px; color: var(--text); }
+  .meta-val.green  { color: var(--green); }
+  .meta-val.orange { color: var(--accent); }
+  .meta-val.red    { color: var(--red); }
+  .spot-actions { display: flex; gap: 8px; }
+  .btn-primary {
+    flex: 1; padding: 11px; background: var(--accent); color: #fff;
+    border: none; border-radius: 11px; font-weight: 700; font-size: 13px;
+    cursor: pointer; transition: opacity 0.18s, transform 0.15s;
+    box-shadow: 0 3px 14px rgba(255,69,0,0.22);
+  }
+  .btn-primary:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
+  .btn-primary:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
+  .btn-secondary {
+    padding: 11px 13px; background: var(--surface2); color: #4B5563;
+    border: 1.5px solid var(--border); border-radius: 11px; font-weight: 600; font-size: 13px;
+    cursor: pointer; transition: all 0.18s;
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); background: #fff; }
+  .btn-close-panel { display: none; }
+  .parkimeter-row {
+    display: flex; align-items: center; gap: 9px; padding: 10px 11px;
+    background: var(--surface2); border-radius: 10px; margin-bottom: 10px;
+    border: 1px solid var(--border);
+  }
+  .parkimeter-icon { font-size: 19px; }
+  .parkimeter-text { flex: 1; }
+  .parkimeter-title { font-size: 12px; font-weight: 600; color: var(--text); }
+  .parkimeter-dist  { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .interested-bar {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 13px;
+    font-size: 12px; color: var(--muted);
+  }
+  .interested-dots { display: flex; gap: 3px; }
+  .i-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); opacity: 0.15; }
+  .i-dot.active { opacity: 0.85; }
+
+  /* TOAST */
+  #toast {
+    position: absolute; top: 76px; left: 50%; transform: translateX(-50%);
+    z-index: 999; background: #fff; border: 1.5px solid var(--border);
+    border-radius: 50px; padding: 10px 22px; font-size: 13px; font-weight: 500;
+    box-shadow: var(--shadow-md); white-space: nowrap;
+    opacity: 0; transition: opacity 0.25s; pointer-events: none; color: var(--text);
+  }
+  #toast.show { opacity: 1; }
+
+  /* LEGEND */
+  #legend {
+    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+    z-index: 100; background: #fff; border: 1.5px solid var(--border);
+    border-radius: 50px; padding: 9px 18px;
+    box-shadow: var(--shadow-sm);
+    display: flex; gap: 16px; align-items: center;
+  }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); font-weight: 500; }
+  .legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+  /* TIMER */
+  .reservation-timer {
+    background: #FFFBEB; border: 1px solid #FDE68A;
+    border-radius: 10px; padding: 8px 12px; margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px; font-size: 12px; color: #92400E;
+  }
+  .timer-val { font-family: 'JetBrains Mono'; font-weight: 600; color: #D97706; font-size: 14px; }
+
+  /* MAP */
+  .leaflet-control-zoom { display: none !important; }
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .leaflet-tile-pane { filter: saturate(0.75) brightness(1.06); }
+  .leaflet-container { background: #F0F2F5; }
+  .zone-label {
+    background: transparent; border: none; box-shadow: none;
+    color: rgba(29,78,216,0.75); font-family: 'Bebas Neue'; font-size: 13px; letter-spacing: 2px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div id="splash" style="background:#fff">
+  <p style="letter-spacing:6px;font-size:10px;color:var(--muted)">BIENVENIDO A</p>
+  <h1>PRKING</h1>
+  <p>MADRID · CAPITAL</p>
+  <div class="splash-dot"></div>
+</div>
+
+<div id="map"></div>
+
+<div id="topbar">
+  <div class="logo">PRK<span>ING</span></div>
+  <div id="search-box">
+    <span class="search-icon">🔍</span>
+    <input type="text" placeholder="Buscar zona, calle o barrio..." id="search-input">
+  </div>
+</div>
+
+<div id="filters">
+  <div class="chip active" onclick="toggleFilter(this,'all')"><span class="chip-dot" style="background:white"></span> Todas</div>
+  <div class="chip" onclick="toggleFilter(this,'free')"><span class="chip-dot" style="background:var(--green)"></span> Libres</div>
+  <div class="chip" onclick="toggleFilter(this,'zbe')"><span class="chip-dot" style="background:var(--blue)"></span> ZBE Central</div>
+  <div class="chip" onclick="toggleFilter(this,'zona-a')"><span class="chip-dot" style="background:var(--yellow)"></span> Zona A (SER)</div>
+  <div class="chip" onclick="toggleFilter(this,'moto')">🏍 Motos</div>
+</div>
+
+<div id="statsbar">
+  <div class="stat-card">
+    <div class="stat-label">Libres</div>
+    <div class="stat-value green" id="stat-free">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Ocupadas</div>
+    <div class="stat-value orange" id="stat-taken">—</div>
+  </div>
+</div>
+
+<div id="vehicle-panel">
+  <div class="panel-title">MI VEHÍCULO</div>
+  <div class="plate-input-wrap">
+    <input type="text" class="plate-input" id="plate-input" maxlength="7" placeholder="1234 ABC">
+    <button class="btn-lookup" onclick="lookupPlate()">▶</button>
+  </div>
+  <div id="car-info"></div>
+</div>
+
+<div id="spot-panel">
+  <div class="spot-header">
+    <div>
+      <div class="spot-id" id="sp-id">P-001</div>
+      <div class="spot-zone" id="sp-zone">ZBE Central · C/ Gran Vía</div>
+    </div>
+    <div class="spot-status-badge status-free" id="sp-status">LIBRE</div>
+  </div>
+  <div class="spot-body">
+    <div class="parkimeter-row">
+      <span class="parkimeter-icon">🅿️</span>
+      <div class="parkimeter-text">
+        <div class="parkimeter-title" id="sp-park-name">Parquímetro Gran Vía 32</div>
+        <div class="parkimeter-dist" id="sp-park-dist">⚡ 45m de distancia</div>
+      </div>
+      <span style="font-size:11px;color:var(--muted)" id="sp-park-price">1.80€/h</span>
+    </div>
+    <div class="interested-bar" id="sp-interested-bar">
+      <span>👁 <span id="sp-interested">3</span> interesados</span>
+      <div class="interested-dots" id="sp-dots"></div>
+    </div>
+    <div id="sp-timer" class="reservation-timer" style="display:none">
+      <span>⏱ Reservado hasta:</span>
+      <span class="timer-val" id="sp-timer-val">--:--</span>
+    </div>
+    <div class="spot-meta">
+      <div class="meta-item">
+        <div class="meta-label">Largo</div>
+        <div class="meta-val green" id="sp-length">5.2m</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Ancho</div>
+        <div class="meta-val green" id="sp-width">2.1m</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Dist.</div>
+        <div class="meta-val orange" id="sp-dist">320m</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Zona</div>
+        <div class="meta-val" id="sp-zone-tag" style="font-size:14px">ZBE</div>
+      </div>
+    </div>
+    <div class="spot-actions">
+      <button class="btn-primary" id="btn-reserve" onclick="reserveSpot()">🚗 Reservar</button>
+      <button class="btn-secondary" onclick="navigateTo()">🧭 Ir</button>
+      <button class="btn-secondary" onclick="reportSpot()">📣</button>
+    </div>
+  </div>
+</div>
+
+<div id="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Libre</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div> Ocupada</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--yellow)"></div> Reservada</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--blue);opacity:0.6"></div> ZBE</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--yellow);opacity:0.6"></div> Zona SER</div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ===================== DATA =====================
+const CAR_DB = {
+  '1234ABC': { model: 'Seat Ibiza', year: 2020, length: 4.06, width: 1.78, height: 1.44, emission: 'C', type: 'turismo' },
+  '5678DEF': { model: 'Tesla Model 3', year: 2022, length: 4.69, width: 1.85, height: 1.44, emission: 'ECO0', type: 'turismo' },
+  '9012GHI': { model: 'VW Golf', year: 2019, length: 4.28, width: 1.80, height: 1.46, emission: 'B', type: 'turismo' },
+  '3456JKL': { model: 'BMW Motorrad', year: 2021, length: 2.10, width: 0.80, height: 1.10, emission: 'C', type: 'moto' },
+  '7890MNO': { model: 'Renault Clio', year: 2018, length: 4.05, width: 1.73, height: 1.44, emission: null, type: 'turismo' },
+  '2468PQR': { model: 'Toyota Yaris Hybrid', year: 2023, length: 3.94, width: 1.74, height: 1.49, emission: 'ECO0', type: 'turismo' },
+};
+
+const PARKIMETERS = [
+  { name: 'Parquímetro Gran Vía 32', price: '1.80€/h' },
+  { name: 'Parquímetro Malasaña Norte', price: '1.50€/h' },
+  { name: 'Parquímetro Chueca Central', price: '2.00€/h' },
+  { name: 'Parquímetro Retiro Este', price: '1.40€/h' },
+  { name: 'Parquímetro Sol 12', price: '2.20€/h' },
+  { name: 'Parquímetro Lavapiés 8', price: '1.20€/h' },
+  { name: 'Parquímetro Salamanca Oeste', price: '2.50€/h' },
+  { name: 'Parquímetro Chamberí 4', price: '1.60€/h' },
+];
+
+// Parking spots around Madrid center
+const SPOTS_DATA = [
+  // ZBE Central (Madrid Central)
+  { id:'P-001', lat:40.4190, lng:-3.7015, zone:'ZBE Central', street:'C/ Gran Vía 28', length:5.2, width:2.1, status:'free', type:'turismo' },
+  { id:'P-002', lat:40.4160, lng:-3.6998, zone:'ZBE Central', street:'C/ Alcalá 14', length:4.8, width:2.0, status:'taken', type:'turismo' },
+  { id:'P-003', lat:40.4145, lng:-3.7055, zone:'ZBE Central', street:'C/ Toledo 6', length:5.5, width:2.2, status:'free', type:'turismo' },
+  { id:'P-004', lat:40.4172, lng:-3.7080, zone:'ZBE Central', street:'C/ Arenal 3', length:4.2, width:1.8, status:'taken', type:'turismo' },
+  { id:'P-005', lat:40.4200, lng:-3.7060, zone:'ZBE Central', street:'Pza. España N', length:5.0, width:2.1, status:'free', type:'turismo' },
+  { id:'P-006', lat:40.4185, lng:-3.6975, zone:'ZBE Central', street:'C/ Barquillo 22', length:4.5, width:1.9, status:'free', type:'turismo' },
+  // Malasaña / Chueca
+  { id:'P-007', lat:40.4230, lng:-3.7035, zone:'Zona A (SER)', street:'C/ Fuencarral 50', length:4.8, width:2.0, status:'taken', type:'turismo' },
+  { id:'P-008', lat:40.4248, lng:-3.7008, zone:'Zona A (SER)', street:'C/ Hortaleza 80', length:5.2, width:2.1, status:'free', type:'turismo' },
+  { id:'P-009', lat:40.4218, lng:-3.7070, zone:'Zona A (SER)', street:'C/ San Bernardo 15', length:4.3, width:1.9, status:'free', type:'moto' },
+  { id:'P-010', lat:40.4258, lng:-3.7052, zone:'Zona A (SER)', street:'C/ Pez 9', length:4.8, width:2.0, status:'taken', type:'turismo' },
+  { id:'P-011', lat:40.4270, lng:-3.7020, zone:'Zona A (SER)', street:'C/ Corredera Alta 18', length:5.0, width:2.0, status:'free', type:'turismo' },
+  // Retiro / Salamanca
+  { id:'P-012', lat:40.4160, lng:-3.6870, zone:'Zona A (SER)', street:'C/ Serrano 45', length:5.5, width:2.3, status:'free', type:'turismo' },
+  { id:'P-013', lat:40.4140, lng:-3.6910, zone:'Zona A (SER)', street:'C/ Velázquez 30', length:4.8, width:2.1, status:'taken', type:'turismo' },
+  { id:'P-014', lat:40.4120, lng:-3.6940, zone:'Zona A (SER)', street:'C/ Goya 12', length:5.0, width:2.0, status:'free', type:'turismo' },
+  // Lavapiés
+  { id:'P-015', lat:40.4100, lng:-3.7030, zone:'ZBE Central', street:'C/ Embajadores 22', length:4.5, width:1.9, status:'free', type:'turismo' },
+  { id:'P-016', lat:40.4090, lng:-3.7010, zone:'ZBE Central', street:'C/ Valencia 8', length:4.2, width:1.8, status:'taken', type:'turismo' },
+  // Chamberí
+  { id:'P-017', lat:40.4310, lng:-3.6990, zone:'Zona A (SER)', street:'Pza. Olavide', length:5.0, width:2.0, status:'free', type:'turismo' },
+  { id:'P-018', lat:40.4295, lng:-3.7055, zone:'Zona A (SER)', street:'C/ Trafalgar 4', length:4.7, width:2.0, status:'free', type:'turismo' },
+  // Motos spots
+  { id:'M-001', lat:40.4195, lng:-3.7025, zone:'ZBE Central', street:'C/ Montera (moto)', length:2.0, width:0.8, status:'free', type:'moto' },
+  { id:'M-002', lat:40.4175, lng:-3.7065, zone:'ZBE Central', street:'Pza. Santo Domingo', length:2.0, width:0.8, status:'taken', type:'moto' },
+];
+
+// ===================== STATE =====================
+let map, markers = {}, currentSpot = null, currentFilter = 'all';
+let reservations = {};
+let userCar = null;
+let interestedCount = {};
+
+// Init interested counts
+SPOTS_DATA.forEach(s => {
+  interestedCount[s.id] = Math.floor(Math.random() * 6);
+});
+
+// ===================== MAP INIT =====================
+function initMap() {
+  map = L.map('map', {
+    center: [40.4168, -3.7038],
+    zoom: 15,
+    zoomControl: false,
+    attributionControl: false,
+  });
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '©OpenStreetMap ©CARTO',
+    maxZoom: 19
+  }).addTo(map);
+
+  // ZBE Central polygon (approximate Madrid Central boundary)
+  const zbeCoords = [
+    [40.4280, -3.7180],[40.4280, -3.6860],
+    [40.4040, -3.6860],[40.4040, -3.7180]
+  ];
+  L.polygon(zbeCoords, {
+    color: '#3B82F6', weight: 2, opacity: 0.7,
+    fillColor: '#3B82F6', fillOpacity: 0.06,
+    dashArray: '6,4'
+  }).addTo(map).bindPopup('<b style="color:#3B82F6">Zona de Bajas Emisiones</b><br>Madrid Central');
+
+  L.divIcon({ className: 'zone-label', html: 'ZBE CENTRAL' });
+
+  // Zona A overlay (slightly larger)
+  const zaCoords = [
+    [40.4360, -3.7280],[40.4360, -3.6750],
+    [40.3980, -3.6750],[40.3980, -3.7280]
+  ];
+  L.polygon(zaCoords, {
+    color: '#FFD600', weight: 1.5, opacity: 0.5,
+    fillColor: '#FFD600', fillOpacity: 0.03,
+    dashArray: '4,6'
+  }).addTo(map).bindPopup('<b style="color:#FFD600">Zona A — SER</b><br>Servicio de Estacionamiento Regulado');
+
+  renderMarkers();
+  updateStats();
+}
+
+// ===================== MARKERS =====================
+function getSpotStatus(spot) {
+  if (reservations[spot.id] && Date.now() < reservations[spot.id]) return 'reserved';
+  return spot.status;
+}
+
+function makeIcon(spot) {
+  const status = getSpotStatus(spot);
+  const isMoto = spot.type === 'moto';
+  const colors = { free: '#00E5A0', taken: '#FF2D55', reserved: '#FFD600' };
+  const color = colors[status];
+  const label = isMoto ? '🏍' : '';
+  const size = isMoto ? 20 : 24;
+  const svg = `<svg width="${size}" height="${size}" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="12" cy="12" r="10" fill="${color}" opacity="0.9"/>
+    <circle cx="12" cy="12" r="7" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+    <text x="12" y="16" text-anchor="middle" font-size="10" font-family="Arial" fill="white" font-weight="bold">${isMoto ? 'M' : 'P'}</text>
+    <circle cx="12" cy="12" r="11" fill="none" stroke="${color}" stroke-width="1" opacity="0.4"/>
+  </svg>`;
+  return L.divIcon({
+    html: `<div style="filter:drop-shadow(0 2px 8px ${color}88)">${svg}</div>`,
+    iconSize: [size, size],
+    iconAnchor: [size/2, size/2],
+    className: ''
+  });
+}
+
+function renderMarkers() {
+  // Clear
+  Object.values(markers).forEach(m => map.removeLayer(m));
+  markers = {};
+
+  SPOTS_DATA.forEach(spot => {
+    const status = getSpotStatus(spot);
+
+    // Apply filter
+    if (currentFilter === 'free' && status !== 'free') return;
+    if (currentFilter === 'zbe' && spot.zone !== 'ZBE Central') return;
+    if (currentFilter === 'zona-a' && spot.zone !== 'Zona A (SER)') return;
+    if (currentFilter === 'moto' && spot.type !== 'moto') return;
+
+    const marker = L.marker([spot.lat, spot.lng], { icon: makeIcon(spot) });
+    marker.on('click', () => openSpotPanel(spot));
+    marker.addTo(map);
+    markers[spot.id] = marker;
+  });
+}
+
+// ===================== FILTERS =====================
+function toggleFilter(el, filter) {
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  currentFilter = filter;
+  renderMarkers();
+}
+
+// ===================== STATS =====================
+function updateStats() {
+  const free = SPOTS_DATA.filter(s => getSpotStatus(s) === 'free').length;
+  const taken = SPOTS_DATA.filter(s => getSpotStatus(s) !== 'free').length;
+  document.getElementById('stat-free').textContent = free;
+  document.getElementById('stat-taken').textContent = taken;
+}
+
+// ===================== PLATE LOOKUP =====================
+function lookupPlate() {
+  const raw = document.getElementById('plate-input').value.replace(/\s/g,'').toUpperCase();
+  const car = CAR_DB[raw];
+  const info = document.getElementById('car-info');
+  if (car) {
+    userCar = car;
+    const emLabel = { 'ECO0':'ECO ZERO', 'B':'ECO B', 'C':'ECO C', null:'SIN ETIQ.' };
+    const emClass = { 'ECO0':'eco-zero', 'B':'eco-b', 'C':'eco-c', null:'eco-none' };
+    info.style.display = 'block';
+    info.innerHTML = `
+      <div class="car-info-row">
+        <span class="car-info-key">Modelo</span>
+        <span class="car-info-val">${car.model} (${car.year})</span>
+      </div>
+      <div class="car-info-row">
+        <span class="car-info-key">Dimensiones</span>
+        <span class="car-info-val">${car.length}m × ${car.width}m</span>
+      </div>
+      <div class="car-info-row">
+        <span class="car-info-key">Tipo</span>
+        <span class="car-info-val">${car.type === 'moto' ? '🏍 Moto' : '🚗 Turismo'}</span>
+      </div>
+      <div class="car-info-row" style="margin-top:6px">
+        <span class="car-info-key">Etiqueta DGT</span>
+        <span class="emission-badge ${emClass[car.emission]}">${emLabel[car.emission]}</span>
+      </div>
+    `;
+    showToast(`✅ ${car.model} cargado correctamente`);
+  } else {
+    info.style.display = 'block';
+    info.innerHTML = `<div style="color:var(--red);font-size:12px">❌ Matrícula no encontrada. Prueba: 1234ABC, 5678DEF, 9012GHI</div>`;
+    userCar = null;
+  }
+}
+
+// ===================== SPOT PANEL =====================
+function openSpotPanel(spot) {
+  currentSpot = spot;
+  const status = getSpotStatus(spot);
+
+  document.getElementById('sp-id').textContent = spot.id;
+  document.getElementById('sp-zone').textContent = spot.zone + ' · ' + spot.street;
+
+  // Status badge
+  const badge = document.getElementById('sp-status');
+  badge.className = 'spot-status-badge';
+  if (status === 'free') { badge.classList.add('status-free'); badge.textContent = 'LIBRE'; }
+  else if (status === 'taken') { badge.classList.add('status-taken'); badge.textContent = 'OCUPADA'; }
+  else { badge.classList.add('status-reserved'); badge.textContent = 'RESERVADA'; }
+
+  document.getElementById('sp-length').textContent = spot.length + 'm';
+  document.getElementById('sp-width').textContent = spot.width + 'm';
+
+  // Distance calc (simulated)
+  const dist = Math.floor(Math.random() * 800 + 100);
+  document.getElementById('sp-dist').textContent = dist + 'm';
+
+  // Zone tag
+  const ztag = document.getElementById('sp-zone-tag');
+  if (spot.zone === 'ZBE Central') {
+    ztag.textContent = 'ZBE';
+    ztag.style.color = 'var(--blue)';
+  } else {
+    ztag.textContent = 'SER';
+    ztag.style.color = 'var(--yellow)';
+  }
+
+  // Parkimeter
+  const pk = PARKIMETERS[Math.floor(Math.random() * PARKIMETERS.length)];
+  const pkDist = Math.floor(Math.random() * 200 + 30);
+  document.getElementById('sp-park-name').textContent = pk.name;
+  document.getElementById('sp-park-dist').textContent = `⚡ ${pkDist}m de distancia`;
+  document.getElementById('sp-park-price').textContent = pk.price;
+
+  // Interested
+  const interested = interestedCount[spot.id] || 0;
+  document.getElementById('sp-interested').textContent = interested;
+  const dotsEl = document.getElementById('sp-dots');
+  dotsEl.innerHTML = '';
+  for (let i = 0; i < Math.min(interested, 8); i++) {
+    const d = document.createElement('div');
+    d.className = 'i-dot active';
+    dotsEl.appendChild(d);
+  }
+
+  // Timer
+  if (status === 'reserved' && reservations[spot.id]) {
+    document.getElementById('sp-timer').style.display = 'flex';
+    updateTimer(spot.id);
+  } else {
+    document.getElementById('sp-timer').style.display = 'none';
+  }
+
+  // Reserve button
+  const btn = document.getElementById('btn-reserve');
+  if (status === 'free') {
+    btn.disabled = false;
+    btn.textContent = '🚗 Reservar';
+    btn.style.background = 'var(--accent)';
+  } else if (status === 'reserved') {
+    btn.disabled = true;
+    btn.textContent = '⏳ Reservada';
+    btn.style.background = 'var(--yellow)';
+    btn.style.color = 'var(--bg)';
+  } else {
+    btn.disabled = true;
+    btn.textContent = '🚫 Ocupada';
+    btn.style.background = 'rgba(255,45,85,0.3)';
+  }
+
+  // Compatibility check
+  if (userCar && status === 'free') {
+    if (userCar.length > spot.length || userCar.width > spot.width) {
+      btn.disabled = true;
+      btn.textContent = '⚠️ No cabe';
+      btn.style.background = 'rgba(255,214,0,0.3)';
+      btn.style.color = 'var(--yellow)';
+      showToast(`⚠️ Tu ${userCar.model} (${userCar.length}m) no cabe en esta plaza (${spot.length}m)`);
+    }
+  }
+
+  // Add to interested
+  interestedCount[spot.id] = (interestedCount[spot.id] || 0) + 1;
+
+  document.getElementById('spot-panel').classList.add('open');
+}
+
+function updateTimer(spotId) {
+  if (!reservations[spotId]) return;
+  const remaining = reservations[spotId] - Date.now();
+  if (remaining <= 0) {
+    delete reservations[spotId];
+    document.getElementById('sp-timer').style.display = 'none';
+    return;
+  }
+  const mins = Math.floor(remaining / 60000);
+  const secs = Math.floor((remaining % 60000) / 1000);
+  document.getElementById('sp-timer-val').textContent = `${mins}:${secs.toString().padStart(2,'0')}`;
+  setTimeout(() => updateTimer(spotId), 1000);
+}
+
+// ===================== RESERVE =====================
+function reserveSpot() {
+  if (!currentSpot) return;
+  const status = getSpotStatus(currentSpot);
+  if (status !== 'free') return;
+
+  // Arrival time: estimate based on distance (30m/min walking) + 5 min buffer
+  const distEl = document.getElementById('sp-dist');
+  const dist = parseInt(distEl.textContent);
+  const arrivalMins = Math.ceil(dist / 80) + 5; // ~80m/min driving
+  const reserveUntil = Date.now() + (arrivalMins * 60 * 1000);
+
+  reservations[currentSpot.id] = reserveUntil;
+
+  // Update marker
+  if (markers[currentSpot.id]) {
+    markers[currentSpot.id].setIcon(makeIcon(currentSpot));
+  }
+
+  document.getElementById('sp-timer').style.display = 'flex';
+  updateTimer(currentSpot.id);
+
+  const btn = document.getElementById('btn-reserve');
+  btn.disabled = true;
+  btn.textContent = `⏳ Reservada ${arrivalMins}min`;
+  btn.style.background = 'var(--yellow)';
+  btn.style.color = 'var(--bg)';
+  document.getElementById('sp-status').className = 'spot-status-badge status-reserved';
+  document.getElementById('sp-status').textContent = 'RESERVADA';
+
+  updateStats();
+  renderMarkers();
+
+  showToast(`✅ Plaza reservada ${arrivalMins} minutos`);
+
+  // Auto-expire reservation in the spot data
+  setTimeout(() => {
+    delete reservations[currentSpot?.id];
+    renderMarkers();
+    updateStats();
+  }, arrivalMins * 60 * 1000);
+}
+
+// ===================== REPORT =====================
+function reportSpot() {
+  if (!currentSpot) return;
+  const newStatus = currentSpot.status === 'free' ? 'taken' : 'free';
+  currentSpot.status = newStatus;
+  renderMarkers();
+  updateStats();
+  openSpotPanel(currentSpot);
+  const msg = newStatus === 'free' ? '🟢 Plaza marcada como LIBRE' : '🔴 Plaza marcada como OCUPADA';
+  showToast(msg);
+}
+
+// ===================== NAVIGATE =====================
+function navigateTo() {
+  if (!currentSpot) return;
+  const url = `https://www.google.com/maps/dir/?api=1&destination=${currentSpot.lat},${currentSpot.lng}`;
+  window.open(url, '_blank');
+}
+
+// ===================== TOAST =====================
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ===================== SIMULATE ACTIVITY =====================
+function simulateActivity() {
+  // Randomly change spot statuses
+  setInterval(() => {
+    const takenSpots = SPOTS_DATA.filter(s => s.status === 'taken' && !reservations[s.id]);
+    const freeSpots = SPOTS_DATA.filter(s => s.status === 'free' && !reservations[s.id]);
+
+    if (Math.random() > 0.5 && takenSpots.length > 0) {
+      const s = takenSpots[Math.floor(Math.random() * takenSpots.length)];
+      s.status = 'free';
+      showToast(`🟢 Plaza ${s.id} liberada en ${s.street}`);
+      renderMarkers();
+      updateStats();
+    } else if (freeSpots.length > 2) {
+      const s = freeSpots[Math.floor(Math.random() * freeSpots.length)];
+      s.status = 'taken';
+      showToast(`🔴 Plaza ${s.id} ocupada en ${s.street}`);
+      renderMarkers();
+      updateStats();
+    }
+  }, 8000);
+
+  // Randomly update interested counts
+  setInterval(() => {
+    SPOTS_DATA.forEach(s => {
+      if (Math.random() > 0.8) {
+        interestedCount[s.id] = Math.max(0, (interestedCount[s.id] || 0) + (Math.random() > 0.5 ? 1 : -1));
+      }
+    });
+  }, 5000);
+}
+
+// ===================== CLOSE PANEL =====================
+document.getElementById('map').addEventListener('click', (e) => {
+  if (!e.target.closest('#spot-panel')) {
+    document.getElementById('spot-panel').classList.remove('open');
+  }
+});
+
+// ===================== SEARCH =====================
+document.getElementById('search-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    showToast('🔍 Buscando: ' + e.target.value);
+  }
+});
+
+// ===================== PLATE ENTER =====================
+document.getElementById('plate-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') lookupPlate();
+});
+
+// ===================== START =====================
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    const s = document.getElementById('splash');
+    s.style.opacity = '0';
+    setTimeout(() => s.style.display = 'none', 500);
+    initMap();
+    simulateActivity();
+  }, 1800);
+});
+</script>
+</body>
+</html>
